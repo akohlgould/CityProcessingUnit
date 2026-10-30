@@ -16,5 +16,8 @@ public class RoundRobin extends FirstInFirstOut {
         this.timeSlice = timeSlice;
     }
 
-    // TODO
+    @Override
+    public int timeSlice() {
+        return timeSlice;
+    }
 }
