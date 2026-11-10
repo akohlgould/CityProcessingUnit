@@ -7,19 +7,22 @@ import trip.Route;
 import trip.Trip;
 import trip.Vehicle;
 
-import java.util.LinkedList;
 import java.util.Queue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * The driver, which drives one vehicle at a time like a single core of CPU runs one process at a time.
  * At every tick, the driver either drives its current vehicle one step along its route, or goes to the dispatcher.
+ * <p>
+ * In part B several drivers drive at the same time, each on its own thread and with its own dispatcher. They share the
+ * clock, the logbook, and the tunnels.
  */
 public class Driver {
 
     private final Clock clock;
     private final Logbook logbook;
     private Dispatcher dispatcher;
-    private final Queue<Message> messageQueue = new LinkedList<>();
+    private final Queue<Message> messageQueue = new LinkedBlockingQueue<>();
 
     private Vehicle vehicle;
     private Route route;
@@ -79,21 +82,49 @@ public class Driver {
     /**
      * Calls {@code runTick()} in a loop until all trips in the driver's dispatcher are finished and the clock has no
      * alarms left to run, such as trips that have not arrived yet.
+     * The calling thread must already be one of the clock's waiters (see {@code Clock.signalNewWaiter()}).
+     *
+     * @throws InterruptedException if the thread is interrupted while waiting for a tick
      */
-    public void driveAllTrips() {
+    public void driveAllTrips() throws InterruptedException {
         while (dispatcher.getNumTrips() > 0 || clock.hasAlarms()) {
             runTick();
         }
     }
 
     /**
-     * Runs one tick. First, the clock starts the tick, which runs any alarms set for it, such as trips arriving and red
-     * lights turning green. Then the driver does one of two things.
+     * Starts a new thread that calls {@code driveAllTrips()}, so this driver drives at the same time as the others.
+     * Before the thread starts, the driver becomes one of the clock's waiters, so the clock waits for it from the next
+     * tick on. When the thread finishes, the driver stops being a waiter.
+     *
+     * @return the new thread, already started
+     */
+    public Thread startDriving() {
+        clock.signalNewWaiter();
+        Thread thread = new Thread(() -> {
+            try {
+                driveAllTrips();
+            } catch (InterruptedException ignored) {
+            } finally {
+                clock.signalRemoveWaiter();
+            }
+        }, "driver");
+        thread.setDaemon(true);
+        thread.start();
+        return thread;
+    }
+
+    /**
+     * Runs one tick. First, the driver waits for the clock to start the next tick; the clock runs any alarms set for
+     * that tick, such as trips arriving and red lights turning green, before the driver continues.
+     * Then the driver does one of two things.
      * If there are any messages, or if the driver is currently not in a vehicle, the dispatcher's {@code dispatch()} is called.
      * Otherwise, the driver goes to the next address and sets the new next address by calling the current route's {@code goTo()} method.
      * If the timer is on (applicable for RoundRobin), a tick of driving also counts down the timer.
+     *
+     * @throws InterruptedException if the thread is interrupted while waiting for the tick
      */
-    public void runTick() {
+    public void runTick() throws InterruptedException {
         if (dispatcher == null) {
             throw new IllegalStateException("dispatcher is null");
         }
@@ -139,7 +170,7 @@ public class Driver {
     }
 
     /**
-     * Adds the given message to the driver's message queue.
+     * Adds the given message to the driver's message queue. Is thread-safe.
      *
      * @param message the message to add
      */
@@ -149,7 +180,7 @@ public class Driver {
 
     /**
      * Returns the driver's message queue, which holds the messages
-     * the dispatcher has not handled yet, oldest first.
+     * the dispatcher has not handled yet, oldest first. Is thread-safe.
      *
      * @return the queue where messages the dispatcher handles are put
      */

@@ -59,6 +59,13 @@ public class DriverTests {
         routes.add(new Route("B (1 red light)", roads));
 
         dispatcher = new Dispatcher(driver, new FirstInFirstOut());
+        clock.signalNewWaiter(); // The test thread takes part in the ticks, and the clock thread starts them
+        clock.startClock();
+    }
+
+    @AfterEach
+    public void stopClock() {
+        clock.stopClock();
     }
 
     private void arriveAt(Trip trip, int tick) {
@@ -70,7 +77,7 @@ public class DriverTests {
         assertSame(trip != null ? trip.getVehicle() : null, driver.getVehicle());
     }
 
-    private Trip scheduleOneTrip() {
+    private Trip scheduleOneTrip() throws InterruptedException {
         checkCurrent(null);
         driver.runTick();
         assertEquals(1, clock.getTickNum());
@@ -84,12 +91,12 @@ public class DriverTests {
     }
 
     @Test
-    public void testScheduleTrip() {
+    public void testScheduleTrip() throws InterruptedException {
         scheduleOneTrip();
     }
 
     @Test
-    public void testFullTrip() {
+    public void testFullTrip() throws InterruptedException {
         Trip trip = scheduleOneTrip();
 
         int eventNum = 1;
@@ -121,7 +128,7 @@ public class DriverTests {
     }
 
     @Test
-    public void testScheduleNextTrip() {
+    public void testScheduleNextTrip() throws InterruptedException {
         Trip trip1 = scheduleOneTrip();
         Trip trip2 = new Trip(routes.get(1), new Vehicle(2));
         dispatcher.addNewTrip(trip2);
@@ -142,7 +149,7 @@ public class DriverTests {
     }
 
     @Test
-    public void testRedAndGreenLights() {
+    public void testRedAndGreenLights() throws InterruptedException {
         Trip tripA = new Trip(routes.get(0), new Vehicle(1));
         Trip tripB = new Trip(routes.get(1), new Vehicle(2));
         dispatcher.addNewTrip(tripB);
@@ -186,7 +193,7 @@ public class DriverTests {
     }
 
     @Test
-    public void testEarlyDestination() {
+    public void testEarlyDestination() throws InterruptedException {
         Route route = new Route("Test Destination", List.of(
                 new Road("1", 2, new Destination()),
                 new Road("2", 2, new Destination())
@@ -216,7 +223,7 @@ public class DriverTests {
     }
 
     @Test
-    public void testArrivals() {
+    public void testArrivals() throws InterruptedException {
         Trip trip1 = new Trip(routes.get(0), new Vehicle(1));
         Trip trip2 = new Trip(routes.get(1), new Vehicle(2));
         arriveAt(trip1, 3);
@@ -242,7 +249,7 @@ public class DriverTests {
     }
 
     @Test
-    public void testAlarmMustBeAfterCurrentTick() {
+    public void testAlarmMustBeAfterCurrentTick() throws InterruptedException {
         driver.runTick();
         assertThrows(IllegalArgumentException.class, () -> clock.setAlarmAt(1, () -> {}));
         assertThrows(IllegalArgumentException.class, () -> clock.setAlarmAt(0, () -> {}));
@@ -250,7 +257,7 @@ public class DriverTests {
     }
 
     @Test
-    public void testDriveAllTripsWaitsForArrivals() {
+    public void testDriveAllTripsWaitsForArrivals() throws InterruptedException {
         Trip trip = new Trip(new Route("Late", List.of(new Road("1", 2, new Destination()))), new Vehicle(1));
         arriveAt(trip, 10);
         driver.driveAllTrips(); // Waits until tick 10, then 2 ticks of driving and a tick at the dispatcher
@@ -260,7 +267,7 @@ public class DriverTests {
     }
 
     @Test
-    public void testOneTickRoads() {
+    public void testOneTickRoads() throws InterruptedException {
         Route route = new Route("Test One Tick Roads", List.of(
                 new Road("1", 1, new StopSign()),
                 new Road("2", 1, new Destination())
@@ -288,7 +295,7 @@ public class DriverTests {
     }
 
     @Test
-    public void testRoundRobin() {
+    public void testRoundRobin() throws InterruptedException {
         dispatcher = new Dispatcher(driver, new RoundRobin(2));
         Road roadA = new Road("A", 5, new Destination());
         Trip tripA = new Trip(new Route("A", List.of(roadA)), new Vehicle(1));
@@ -311,7 +318,7 @@ public class DriverTests {
     }
 
     @Test
-    public void testGreenLightDoesNotUseTimeSlice() {
+    public void testGreenLightDoesNotUseTimeSlice() throws InterruptedException {
         dispatcher = new Dispatcher(driver, new RoundRobin(3));
         Trip tripX = new Trip(new Route("X", List.of(
                 new Road("X1", 2, new RedLight(2)),
@@ -370,7 +377,7 @@ public class DriverTests {
         }
 
         @Test
-        public void testFifoTickByTick() {
+        public void testFifoTickByTick() throws InterruptedException {
             // What the dispatcher holds at the end of each tick; index 0 is tick 1
             Trip[] driving = {tripA, tripA, tripA, tripA, tripB, tripB, tripB, tripC, tripC, tripC, tripC,
                     tripA, tripA, tripA, tripB, tripB, tripB, null};
@@ -389,7 +396,7 @@ public class DriverTests {
         }
 
         @Test
-        public void testRoundRobinTickByTick() {
+        public void testRoundRobinTickByTick() throws InterruptedException {
             dispatcher = new Dispatcher(driver, new RoundRobin(2));
             // Which trip is current at the end of each tick; index 0 is tick 1
             Trip[] driving = {tripA, tripA, tripA, tripB, tripB, tripB, tripC, tripC, tripC, tripC,
@@ -404,7 +411,7 @@ public class DriverTests {
         }
 
         @Test
-        public void testPriorityFinishOrder() {
+        public void testPriorityFinishOrder() throws InterruptedException {
             dispatcher = new Dispatcher(driver, new VIPFirst());
             tripA.setPriority(3);
             tripB.setPriority(1);
@@ -416,7 +423,7 @@ public class DriverTests {
         }
 
         @Test
-        public void testShortestNextStretchFirstFinishOrder() {
+        public void testShortestNextStretchFirstFinishOrder() throws InterruptedException {
             dispatcher = new Dispatcher(driver, new ShortestNextStretchFirst(0.5));
             addArrivals();
             driver.runTick();
@@ -429,7 +436,7 @@ public class DriverTests {
         }
 
         @Test
-        public void testDriveScheduledTrips() {
+        public void testDriveScheduledTrips() throws InterruptedException {
             addArrivals();
             driver.driveAllTrips();
             assertEquals(0, dispatcher.getNumTrips());

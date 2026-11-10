@@ -94,6 +94,13 @@ public class DispatcherTests {
         clock = new Clock();
         driver = new Driver(clock, logbook);
         messages = driver.getMessageQueue();
+        clock.signalNewWaiter(); // The test thread takes part in the ticks, and the clock thread starts them
+        clock.startClock();
+    }
+
+    @AfterEach
+    public void stopClock() {
+        clock.stopClock();
     }
 
     private void checkCurrent(Trip trip) {
@@ -101,12 +108,12 @@ public class DispatcherTests {
         assertSame(trip != null ? trip.getVehicle() : null, driver.getVehicle());
     }
 
-    private void sendAndDispatch(Message.Type type) {
+    private void sendAndDispatch(Message.Type type) throws InterruptedException {
         messages.add(new Message(driver.getVehicle().id(), type));
         runDispatcherTick();
     }
 
-    private void runDispatcherTick() {
+    private void runDispatcherTick() throws InterruptedException {
         clock.waitForTick();
         dispatcher.dispatch();
     }
@@ -122,7 +129,7 @@ public class DispatcherTests {
         assertEquals(1, dispatcher.getNumTrips());
     }
 
-    private void addTwoTrips() {
+    private void addTwoTrips() throws InterruptedException {
         dispatcher.addNewTrip(trips.get(0));
         dispatcher.addNewTrip(trips.get(1));
         checkCurrent(null);
@@ -164,7 +171,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testNoInterruptsWithTwoTrips() {
+        public void testNoInterruptsWithTwoTrips() throws InterruptedException {
             addTwoTrips();
         }
 
@@ -179,7 +186,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testStopSignWithTwoTrips() {
+        public void testStopSignWithTwoTrips() throws InterruptedException {
             addTwoTrips();
             messages.add(new Message(trips.get(0).getVehicle().id(), Message.Type.STOP_SIGN));
             dispatcher.dispatch();
@@ -210,7 +217,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testRedLightGreenLightWithMultipleTrips() {
+        public void testRedLightGreenLightWithMultipleTrips() throws InterruptedException {
             addTwoTrips();
             dispatcher.addNewTrip(trips.get(2));
             sendAndDispatch(Message.Type.RED_LIGHT);
@@ -240,7 +247,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testMultipleMessages() {
+        public void testMultipleMessages() throws InterruptedException {
             addTwoTrips();
             dispatcher.addNewTrip(trips.get(2));
             sendAndDispatch(Message.Type.RED_LIGHT);
@@ -258,7 +265,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testStretchLength() {
+        public void testStretchLength() throws InterruptedException {
             addTwoTrips();
 
             int roadOneLength = trips.get(0).getRoute().getRoad(0).getLength();
@@ -288,7 +295,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testTimer() {
+        public void testTimer() throws InterruptedException {
             addTwoTrips();
             messages.add(new Message(trips.get(0).getVehicle().id(), Message.Type.TIMER));
             dispatcher.dispatch();
@@ -301,7 +308,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testTimerAtEndOfRoad() {
+        public void testTimerAtEndOfRoad() throws InterruptedException {
             // The timer can run out on the same tick a road ends, so the trip has already left when TIMER is handled
             addTwoTrips();
             dispatcher.addNewTrip(trips.get(2));
@@ -328,7 +335,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testProgressSavedWhenTripLeaves() {
+        public void testProgressSavedWhenTripLeaves() throws InterruptedException {
             addTwoTrips();
             dispatcher.addNewTrip(trips.get(2));
             clock.waitForTicks(4);
@@ -351,7 +358,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testPolicyPicksFromReadyLine() {
+        public void testPolicyPicksFromReadyLine() throws InterruptedException {
             TestPolicy newestFirst = new TestPolicy(0, true);
             dispatcher = new Dispatcher(driver, newestFirst);
             for (int i = 0; i < 3; i++) {
@@ -380,7 +387,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testNoTimerWithoutTimeSlice() {
+        public void testNoTimerWithoutTimeSlice() throws InterruptedException {
             addTwoTrips();
             sendAndDispatch(Message.Type.STOP_SIGN);
             checkCurrent(trips.get(1));
@@ -399,7 +406,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testTimerOrder() {
+        public void testTimerOrder() throws InterruptedException {
             for (int i = 0; i < 3; i++) {
                 dispatcher.addNewTrip(trips.get(i));
             }
@@ -416,7 +423,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testTimerStartedForEveryScheduledTrip() {
+        public void testTimerStartedForEveryScheduledTrip() throws InterruptedException {
             dispatcher.dispatch();
             checkCurrent(null);
             assertEquals(0, driver.getTimerTicksLeft());
@@ -432,7 +439,7 @@ public class DispatcherTests {
         }
 
         @Test
-        public void testTimerNotRestartedForCurrentTrip() {
+        public void testTimerNotRestartedForCurrentTrip() throws InterruptedException {
             for (int i = 0; i < 3; i++) {
                 dispatcher.addNewTrip(trips.get(i));
             }
